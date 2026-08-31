@@ -1,0 +1,145 @@
+# LOADED capture — npm-uptime-kuma. THE CELL THAT PROVES THE NPM METHOD.
+#
+# Commit TWO files into the uptime-kuma fork, then dispatch:
+#   .github/workflows/uptime-kuma-loaded.yml   <- this file
+#   .github/depproof/node-trace.cjs            <- usage/capture/node-trace.cjs, copied verbatim
+#
+# The shim is committed rather than fetched at run time: depproof-corpus is private, so a raw
+# URL would 404, and a tracer that fails to download leaves a job that looks like it ran.
+#
+# WHY THIS CELL FIRST, AND NOT axios. The Phase 0 spec assumed one npm method
+# (`NODE_OPTIONS=--require`). There are three, and only this one is honest today:
+#
+#   uptime-kuma  `node --test`  -- Node's own runner. No bundler, no transform, ordinary
+#                                 resolution, and the backend tests are CommonJS
+#                                 (`require("node:test")`). Observable.
+#   axios        `vitest run`   -- resolves through VITE's module graph. A hook may under-count
+#   outline      `vitest run`      loading, which OVER-reports "never loaded" -- the unsafe
+#                                 direction. Deferred until this cell proves the method.
+#
+# TWO INDEPENDENT METHODS, ON PURPOSE. NODE_V8_COVERAGE is primary: V8 reports every script it
+# compiled, it covers ESM as well as CommonJS, and it needs no injected code, so no project
+# config can override it the way gson's <argLine> silently overrode -DargLine (CS-8 #1). The
+# require hook runs alongside as a cross-check. Their AGREEMENT is the evidence that the npm
+# method works at all -- one method producing a plausible number is exactly what CS-8 warns
+# about; two independent methods landing on the same set is not.
+#
+# TOOLCHAIN CORRECTION: corpus.yaml records `toolchain_node: "22"` for this repo. Its CI matrix
+# is actually [20, 24] on ubuntu-22.04 (plus 25 as non-LTS), and package.json engines says
+# ">= 20.4.0". 24 is used here: test-backend.mjs branches on the major version and takes the
+# `node --test` glob path only at >= 22.
+
+name: LOADED capture — uptime-kuma
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >-
+          Commit or branch to measure. Defaults to the corpus pin. A fork's DEFAULT branch tracks
+          upstream's head, not our SHA, so measuring the default branch measures different code
+          than corpus.yaml claims — and the number would silently not be comparable to CS-7.
+        required: false
+        default: 'depproof-pinned'
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-22.04         # declared by the repo's own matrix. Not ubuntu-latest.
+    steps:
+      - run: git config --global core.autocrlf false
+      # The workflow lives on the DEFAULT branch (GitHub only offers Run workflow there) but
+      # measures the PIN. Same split as templates/depproof-fork.yml.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Verbatim from the repo's auto-test.yml, including the native rebuild. A build step that
+      # is skipped because it "looks unnecessary" is how a suite starts failing for reasons that
+      # then get attributed to the corpus (CS-8 #7).
+      - run: npm clean-install --no-fund
+      - run: npm rebuild @louislam/sqlite3
+      - run: npm run build
+
+      # Node runs each test FILE in its own child process, so per-process output is mandatory
+      # here for the same reason `%p` is mandatory on the JVM (CS-8 #2). Both mechanisms below
+      # write one file per process natively.
+      #
+      # The declared command is `npm run test-backend`, which execSyncs `test-backend-22`:
+      #   cross-env TEST_BACKEND=1 node --test --test-reporter=spec "test/backend-test/**/*.js"
+      # It is run directly here ONLY to add a second, machine-readable reporter — the spec
+      # reporter is kept so the executed set is identical to the declared one. Nothing about
+      # WHICH tests run is changed.
+      - name: Test with both tracers
+        env:
+          TEST_BACKEND: 1
+          NODE_V8_COVERAGE: ${{ github.workspace }}/v8-coverage
+          NODE_OPTIONS: --require ${{ github.workspace }}/.github/depproof/node-trace.cjs
+          DEPPROOF_TRACE_DIR: ${{ github.workspace }}/traces
+        run: |
+          mkdir -p traces v8-coverage results
+          node --test \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=junit --test-reporter-destination=results/junit.xml \
+            "test/backend-test/**/*.js" \
+            || echo "suite exited $? — a partial suite still yields a valid trace"
+
+      # CS-8 #1. Fail loudly rather than let an empty capture become "nothing loaded".
+      - name: Canary — both tracers attached
+        run: |
+          cov=$(ls v8-coverage/coverage-*.json 2>/dev/null | wc -l)
+          hook=$(ls traces/node-*.log 2>/dev/null | wc -l)
+          echo "v8 coverage files: $cov   require-hook files: $hook"
+          if [ "$cov" -lt 1 ]; then
+            echo "::error::NODE_V8_COVERAGE produced nothing. Do not read a percentage off this run."
+            exit 1
+          fi
+          if [ "$hook" -lt 1 ]; then
+            echo "::warning::require hook produced nothing — V8 coverage is primary and still valid, but method agreement cannot be reported"
+          fi
+          if [ ! -s results/junit.xml ]; then
+            echo "::error::no test results — there is no coverage denominator, so no publishable number."
+            exit 1
+          fi
+
+      # node_modules paths carry no version, so the mapper needs a lockfile map and REFUSES to
+      # invent one. Built from package-lock.json rather than `npm ls` so it reflects what was
+      # installed, not what could be resolved now.
+      - name: Lockfile version map
+        run: |
+          node -e '
+            const lock = require("./package-lock.json");
+            const out = {};
+            for (const [p, v] of Object.entries(lock.packages || {})) {
+              if (!p.startsWith("node_modules/")) continue;
+              const name = p.slice(p.lastIndexOf("node_modules/") + 13);
+              if (v.version) out[name] = v.version;
+            }
+            require("fs").writeFileSync("lockfile-versions.json", JSON.stringify(out, null, 1));
+            console.log("mapped", Object.keys(out).length, "packages");
+          '
+
+      - name: Resolved set — depproof SBOM (the primary denominator)
+        run: |
+          mkdir -p sbom
+          docker run --rm -v "$PWD:/w" -w /w ghcr.io/depproof/depproof:v0 \
+            scan --discover --output-dir sbom || true
+          ls -la sbom/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loaded-uptime-kuma
+          path: |
+            traces/
+            v8-coverage/
+            results/
+            sbom/
+            lockfile-versions.json
+          retention-days: 14
