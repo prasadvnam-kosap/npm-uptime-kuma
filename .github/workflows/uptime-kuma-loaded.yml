@@ -1,11 +1,8 @@
 # LOADED capture — npm-uptime-kuma. THE CELL THAT PROVES THE NPM METHOD.
 #
-# Commit TWO files into the uptime-kuma fork, then dispatch:
-#   .github/workflows/uptime-kuma-loaded.yml   <- this file
-#   .github/depproof/node-trace.cjs            <- usage/capture/node-trace.cjs, copied verbatim
-#
-# The shim is committed rather than fetched at run time: depproof-corpus is private, so a raw
-# URL would 404, and a tracer that fails to download leaves a job that looks like it ran.
+# Install with usage/capture/install.sh, which embeds the tracer shim into this file as base64.
+# Do NOT commit the shim to the repo: this job checks out `depproof-pinned`, so anything committed
+# to the default branch is gone by the time the tracer is needed.
 #
 # WHY THIS CELL FIRST, AND NOT axios. The Phase 0 spec assumed one npm method
 # (`NODE_OPTIONS=--require`). There are three, and only this one is honest today:
@@ -68,6 +65,20 @@ jobs:
       - run: npm rebuild @louislam/sqlite3
       - run: npm run build
 
+      # The shim is embedded here as base64 by install.sh, from usage/capture/node-trace.cjs.
+      #
+      # It is NOT committed to the repo and NOT read from the checkout, because the checkout above
+      # replaces the working tree with `depproof-pinned` -- and the pinned commit has never heard
+      # of our harness. Committing the shim to the DEFAULT branch (the first attempt) put it on a
+      # branch this job never checks out: NODE_OPTIONS then pointed at a missing file, which broke
+      # every node invocation including `npm clean-install`, and the run died before producing a
+      # single trace.
+      - name: Write the tracer shim
+        run: |
+          mkdir -p .github/depproof
+          echo 'LyoqCiAqIE5vZGUgTE9BREVEIHRyYWNlci4KICoKICogICBOT0RFX09QVElPTlM9Ii0tcmVxdWlyZSAuL3VzYWdlL2NhcHR1cmUvbm9kZS10cmFjZS5janMiIERFUFBST09GX1RSQUNFX0RJUj10cmFjZXMgbnBtIHRlc3QKICoKICogUkVBRCBUSElTIEJFRk9SRSBUUlVTVElORyBBTlkgTlVNQkVSIElUIFBST0RVQ0VTLgogKgogKiBUaGlzIGhvb2sgaXMgaG9uZXN0IGZvciBPTkUgb2YgdGhlIHRocmVlIG5wbSBjZWxscyBhbmQgdW5wcm92ZW4gZm9yIHRoZSBvdGhlciB0d28sIHdoaWNoIGlzCiAqIHdoeSB0cmFjZS1zZXQueWFtbCBtYXJrcyB0aGVtIGB0cmFjZV9tZXRob2Q6IFVOUFJPVkVOYCBhbmQgcHV0cyB1cHRpbWUta3VtYSBmaXJzdC4KICoKICogICB1cHRpbWUta3VtYSAgYG5vZGUgLS10ZXN0YCAgLS0gTm9kZSdzIG93biBydW5uZXIuIE9yZGluYXJ5IENvbW1vbkpTL0VTTSByZXNvbHV0aW9uLCBubwogKiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGJ1bmRsZXIsIG5vIHRyYW5zZm9ybS4gVGhpcyBob29rIHNlZXMgd2hhdCBpdCBjbGFpbXMgdG8uCiAqICAgYXhpb3MgICAgICAgIGB2aXRlc3QgcnVuYCAgIC0tIHZpdGVzdCByZXNvbHZlcyB0aHJvdWdoIFZJVEUncyBtb2R1bGUgZ3JhcGguIEEgcmVxdWlyZSBob29rCiAqICAgb3V0bGluZSAgICAgIGB2aXRlc3QgcnVuYCAgICAgIG9ic2VydmVzIE5vZGUncyBsb2FkZXIsIG5vdCBuZWNlc3NhcmlseSBldmVyeSBkZXBlbmRlbmN5CiAqICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgVml0ZSB0cmFuc2Zvcm1lZCBvciBpbmxpbmVkLiBJdCBtYXkgVU5ERVItY291bnQgbG9hZGluZywKICogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB3aGljaCBvdmVyLXJlcG9ydHMgIm5ldmVyIGxvYWRlZCIgLS0gdGhlIHVuc2FmZSBkaXJlY3Rpb24uCiAqCiAqIFRoZSBicm93c2VyIHByb2plY3RzIChheGlvcyBgYnJvd3Nlci1oZWFkbGVzc2AsIG91dGxpbmUgYHNoYXJlZC1qc2RvbWAsIGJvdGggcmVwb3MnIFBsYXl3cmlnaHQKICogc3VpdGVzKSBleGVjdXRlIGluIGEgYnJvd3NlciBvciBhIERPTSBzaGltLiBOT0RFX09QVElPTlMgY2Fubm90IG9ic2VydmUgdGhlbSBhdCBhbGwuIFRoZXkgYXJlCiAqIGxpc3RlZCBpbiBgZXhjbHVkZWRfc3VpdGVzYCBhbmQgZXhjbHVkZWQgZGVsaWJlcmF0ZWx5IHJhdGhlciB0aGFuIHNpbGVudGx5IG1pc3NlZCAtLSBhIHN1aXRlCiAqIHlvdSBjYW5ub3Qgc2VlIGlzIG5vdCBhIHN1aXRlIHRoYXQgbG9hZGVkIG5vdGhpbmcuCiAqCiAqIFRoZSBucG0gcm93IGlzIHRoZXJlZm9yZSBub3Qgb25lIG1ldGhvZC4gUHJvdmluZyBpdCBpcyBQNiwgYW5kIGl0IGlzIHByZXJlcXVpc2l0ZSB3b3JrLCBub3QKICogc29tZXRoaW5nIHRvIGRpc2NvdmVyIGhhbGZ3YXkgdGhyb3VnaCBhIG1hdHJpeC4KICoKICogRW1pdHMgb25lIGZpbGUgcGVyIHBpZDogdml0ZXN0IGFuZCBqZXN0IGZvcmsgd29ya2VyIHByb2Nlc3Nlcywgc2FtZSBsZXNzb24gYXMgSlZNIGAlcGAuCiAqLwoKJ3VzZSBzdHJpY3QnOwoKY29uc3QgZnMgPSByZXF1aXJlKCdmcycpOwpjb25zdCBwYXRoID0gcmVxdWlyZSgncGF0aCcpOwpjb25zdCBNb2R1bGUgPSByZXF1aXJlKCdtb2R1bGUnKTsKCmNvbnN0IGRpciA9IHByb2Nlc3MuZW52LkRFUFBST09GX1RSQUNFX0RJUjsKaWYgKGRpcikgewogIGNvbnN0IGxvYWRlZCA9IG5ldyBTZXQoKTsKCiAgLy8gV3JhcCB0aGUgcmVzb2x2ZXIgcmF0aGVyIHRoYW4gdGhlIGxvYWRlcjogX3Jlc29sdmVGaWxlbmFtZSBzZWVzIGV2ZXJ5IHNwZWNpZmllciB0aGF0IGlzCiAgLy8gYWN0dWFsbHkgcmVzb2x2ZWQgdG8gYSBmaWxlLCBpbmNsdWRpbmcgb25lcyBhIGxhdGVyIGNhY2hlIGhpdCB3b3VsZCBoaWRlLgogIGNvbnN0IG9yaWdSZXNvbHZlID0gTW9kdWxlLl9yZXNvbHZlRmlsZW5hbWU7CiAgTW9kdWxlLl9yZXNvbHZlRmlsZW5hbWUgPSBmdW5jdGlvbiAocmVxdWVzdCwgcGFyZW50LCBpc01haW4sIG9wdGlvbnMpIHsKICAgIGNvbnN0IHJlc29sdmVkID0gb3JpZ1Jlc29sdmUuY2FsbCh0aGlzLCByZXF1ZXN0LCBwYXJlbnQsIGlzTWFpbiwgb3B0aW9ucyk7CiAgICBpZiAodHlwZW9mIHJlc29sdmVkID09PSAnc3RyaW5nJyAmJiByZXNvbHZlZC5pbmNsdWRlcygnbm9kZV9tb2R1bGVzJykpIGxvYWRlZC5hZGQocmVzb2x2ZWQpOwogICAgcmV0dXJuIHJlc29sdmVkOwogIH07CgogIC8vIEVTTSBkb2VzIG5vdCBnbyB0aHJvdWdoIE1vZHVsZS5fcmVzb2x2ZUZpbGVuYW1lLiBBbnl0aGluZyBpbXBvcnRlZCByYXRoZXIgdGhhbiByZXF1aXJlZCBpcwogIC8vIGludmlzaWJsZSBoZXJlLCBhbmQgYm90aCB2aXRlc3QgcmVwb3MgYXJlIEVTTS1maXJzdC4gUmVjb3JkZWQgaW4gdGhlIG91dHB1dCBzbyB0aGUgZ2FwCiAgLy8gdHJhdmVscyB3aXRoIHRoZSBkYXRhIGluc3RlYWQgb2YgYmVpbmcgcmVkaXNjb3ZlcmVkIGxhdGVyLgogIGNvbnN0IGVzbUNhdmVhdCA9ICcjIEVTTSBpbXBvcnRzIGFyZSBOT1QgY2FwdHVyZWQgYnkgdGhpcyBob29rIChDSlMgcmVzb2x2ZXIgb25seSknOwoKICBjb25zdCBmbHVzaCA9ICgpID0+IHsKICAgIHRyeSB7CiAgICAgIGZzLm1rZGlyU3luYyhkaXIsIHsgcmVjdXJzaXZlOiB0cnVlIH0pOwogICAgICBjb25zdCBvdXQgPSBwYXRoLmpvaW4oZGlyLCBgbm9kZS0ke3Byb2Nlc3MucGlkfS5sb2dgKTsKICAgICAgZnMud3JpdGVGaWxlU3luYygKICAgICAgICBvdXQsCiAgICAgICAgYCMgcGlkICR7cHJvY2Vzcy5waWR9IGFyZ3Y9JHtwcm9jZXNzLmFyZ3Yuc2xpY2UoMSwgMykuam9pbignICcpfVxuYCArCiAgICAgICAgICBlc21DYXZlYXQgKyAnXG4nICsKICAgICAgICAgIEFycmF5LmZyb20obG9hZGVkKS5zb3J0KCkuam9pbignXG4nKSArICdcbicKICAgICAgKTsKICAgIH0gY2F0Y2ggKGUpIHsKICAgICAgcHJvY2Vzcy5zdGRlcnIud3JpdGUoYFtkZXBwcm9vZi10cmFjZV0gc2hpbSBmYWlsZWQ6ICR7ZS5tZXNzYWdlfVxuYCk7CiAgICB9CiAgfTsKCiAgcHJvY2Vzcy5vbignZXhpdCcsIGZsdXNoKTsKICAvLyBUZXN0IHJ1bm5lcnMgZnJlcXVlbnRseSBleGl0IHZpYSBzaWduYWw7IHdpdGhvdXQgdGhlc2UgdGhlIHdvcmtlciB0cmFjZXMgYXJlIHNpbXBseSBhYnNlbnQsCiAgLy8gYW5kIGFic2VudCB0cmFjZXMgcmVhZCBhcyAibm90aGluZyBsb2FkZWQiLgogIGZvciAoY29uc3Qgc2lnIG9mIFsnU0lHSU5UJywgJ1NJR1RFUk0nXSkgewogICAgcHJvY2Vzcy5vbihzaWcsICgpID0+IHsgZmx1c2goKTsgcHJvY2Vzcy5leGl0KDApOyB9KTsKICB9Cn0K' | base64 -d > .github/depproof/node-trace.cjs
+          wc -l .github/depproof/node-trace.cjs
+
       # Node runs each test FILE in its own child process, so per-process output is mandatory
       # here for the same reason `%p` is mandatory on the JVM (CS-8 #2). Both mechanisms below
       # write one file per process natively.
@@ -112,7 +123,11 @@ jobs:
       # node_modules paths carry no version, so the mapper needs a lockfile map and REFUSES to
       # invent one. Built from package-lock.json rather than `npm ls` so it reflects what was
       # installed, not what could be resolved now.
+      # if: always() -- the canary above fails the job when the measurement cannot be
+      # trusted. Without this the artifact is never uploaded, so the one run that most
+      # needs diagnosing is the one that returns no data. The job still goes red.
       - name: Lockfile version map
+        if: always()
         run: |
           node -e '
             const lock = require("./package-lock.json");
@@ -126,14 +141,22 @@ jobs:
             console.log("mapped", Object.keys(out).length, "packages");
           '
 
+      # if: always() -- the canary above fails the job when the measurement cannot be
+      # trusted. Without this the artifact is never uploaded, so the one run that most
+      # needs diagnosing is the one that returns no data. The job still goes red.
       - name: Resolved set — depproof SBOM (the primary denominator)
+        if: always()
         run: |
           mkdir -p sbom
           docker run --rm -v "$PWD:/w" -w /w ghcr.io/depproof/depproof:v0 \
             scan --discover --output-dir sbom || true
           ls -la sbom/
 
+      # if: always() -- the canary above fails the job when the measurement cannot be
+      # trusted. Without this the artifact is never uploaded, so the one run that most
+      # needs diagnosing is the one that returns no data. The job still goes red.
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: loaded-uptime-kuma
           path: |
