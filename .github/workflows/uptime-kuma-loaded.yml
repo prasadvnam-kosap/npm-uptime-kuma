@@ -144,6 +144,55 @@ jobs:
       # if: always() -- the canary above fails the job when the measurement cannot be
       # trusted. Without this the artifact is never uploaded, so the one run that most
       # needs diagnosing is the one that returns no data. The job still goes red.
+      # Which installed packages contain runnable code at all?
+      #
+      # The Java side answers this by opening each jar and counting .class files -- a package
+      # with none (spring-boot-starter-web and friends) is a shopping list, not code, and can
+      # never load anywhere. npm has the same population: `@types/*` are type hints erased at
+      # build time, and some packages are pure metadata. Counting them as "never loaded"
+      # inflates the number with things that could not possibly load.
+      #
+      # It has to be recorded HERE because node_modules only exists on this runner.
+      - name: Inventory — which packages have runtime code
+        if: always()
+        run: |
+          node -e '
+            const fs=require("fs"), path=require("path");
+            const out={};
+            const walk=(dir)=>{
+              let ents; try { ents=fs.readdirSync(dir,{withFileTypes:true}); } catch { return; }
+              for (const e of ents) {
+                if (!e.isDirectory()) continue;
+                const p=path.join(dir,e.name);
+                if (e.name.startsWith("@")) { walk(p); continue; }
+                const pj=path.join(p,"package.json");
+                if (fs.existsSync(pj)) {
+                  let m={}; try { m=JSON.parse(fs.readFileSync(pj,"utf8")); } catch {}
+                  // Count .js/.cjs/.mjs/.node anywhere in the package, excluding nested deps.
+                  let code=0;
+                  const scan=(d,depth)=>{
+                    if (depth>4||code>0) return;
+                    let es; try { es=fs.readdirSync(d,{withFileTypes:true}); } catch { return; }
+                    for (const x of es) {
+                      if (x.name==="node_modules") continue;
+                      const q=path.join(d,x.name);
+                      if (x.isDirectory()) scan(q,depth+1);
+                      else if (/\.(js|cjs|mjs|node)$/.test(x.name)) { code++; return; }
+                    }
+                  };
+                  scan(p,0);
+                  out[m.name||e.name]={version:m.version||null, code_files:code,
+                                       has_main:Boolean(m.main||m.exports||m.bin)};
+                }
+                walk(path.join(p,"node_modules"));
+              }
+            };
+            walk("node_modules");
+            fs.writeFileSync("inventory.json", JSON.stringify(out,null,1));
+            const empty=Object.values(out).filter(v=>v.code_files===0).length;
+            console.log("inventoried", Object.keys(out).length, "packages;", empty, "with no runtime code");
+          '
+
       - name: Resolved set — depproof SBOM (the primary denominator)
         if: always()
         run: |
@@ -165,4 +214,5 @@ jobs:
             results/
             sbom/
             lockfile-versions.json
+            inventory.json
           retention-days: 14
