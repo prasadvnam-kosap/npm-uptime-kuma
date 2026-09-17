@@ -33,7 +33,7 @@ jobs:
       - run: npm run build
 
       - id: behaviour
-        uses: depproof/depproof-action/behaviour-setup@main
+        uses: depproof/depproof-action/behaviour-setup@behaviour-candidate
         with:
           scanner-image: ${{ inputs.scanner-image }}
 
@@ -76,7 +76,7 @@ jobs:
             echo; echo "**$verdict**"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: depproof/depproof-action@main
+      - uses: depproof/depproof-action@behaviour-candidate
         if: always()
         with:
           scanner-image: ${{ inputs.scanner-image }}
